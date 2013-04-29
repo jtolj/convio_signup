@@ -131,8 +131,7 @@ function convio_signup_block_configure($delta = '') {
       '#description' => t('List of comma separated (Interest ID, Friendly Name) pairs that will be listed as subscription options on this form. Adding ",1" to the end of the row will make that option selected by default. Multiple interest ID\'s should be listed on a separate line. Example: 13532, Programming Newsletter, 1'),
       '#default_value' => $result->interest_ids,
       '#element_validate' => array('_convio_signup_id_validate'),
-      '#size' => 60,
-      '#maxlength' => 60
+      '#maxlength' => 1024
     );
     $form['convio_signup']['group_ids'] = array(
       '#type' => 'textfield',
@@ -141,7 +140,7 @@ function convio_signup_block_configure($delta = '') {
       '#default_value' => $result->group_ids,
       '#element_validate' => array('_convio_signup_id_validate'),
       '#size' => 60,
-      '#maxlength' => 60
+      '#maxlength' => 1024
     );
     $form['convio_signup']['submit_text'] = array(
       '#type' => 'textfield',
