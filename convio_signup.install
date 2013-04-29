@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * Implements hook_schema()
+ *
+ */
+function convio_signup_schema() {
+  $schema['convio_signup'] = array(
+    'description' => 'The convio_signup table stores information about Convio signup forms.',
+    'fields' => array(
+      'cid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => FALSE,
+        'description' => 'The block title',
+      ),
+      'description' => array(
+        'type' => 'varchar',
+        'length' => 1024,
+        'not null' => FALSE,
+        'description' => 'The block description',
+      ),
+      'interest_ids' => array(
+        'type' => 'varchar',
+        'length' => 1024,
+        'not null' => FALSE,
+        'description' => 'Comma separated interest IDs to be applied to Convio account',
+      ),
+      'group_ids' => array(
+        'type' => 'varchar',
+        'length' => 1024,
+        'not null' => FALSE,
+        'description' => 'Comma separated group IDs to be applied to Convio account',
+      ),
+      'fields_displayed' => array(
+        'type' => 'blob',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+        'description' => 'Serialized array of fields to be displayed on form',
+      ),
+      'fields_required' => array(
+        'type' => 'blob',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+        'description' => 'Serialized array of fields as as required on form',
+      ),
+      'submit' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+        'description' => 'Text for submit button',
+      ),
+      'before_markup' => array(
+        'type' => 'varchar',
+        'length' => 2048,
+        'not null' => FALSE,
+        'description' => 'Markup to be displayed above form'
+      ),
+      'before_format' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'Markup to be displayed above form'
+      ),
+    ),
+    'primary key' => array('cid'),
+  );
+  
+  return $schema;
+}
+
+function convio_signup_install() {
+  
+}
+
+function convio_signup_uninstall() {
+  
+}

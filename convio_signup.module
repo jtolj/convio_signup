@@ -1,0 +1,452 @@
+<?php
+
+/**
+ * Implements hook_perm().
+ */
+function convio_signup_perm() {
+  return array(
+    'administer convio signup forms',
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function convio_signup_menu() {
+  $items = array();
+  
+  $items['admin/structure/convio-signup'] = array(
+    'title' => 'Convio Signup Forms',
+    'description' => 'Create/Edit Convio Signup Forms',
+    'page callback' => 'convio_signup_admin',
+    'access callback' => 'user_access',
+    'access arguments' => array('administer convio signup forms'),
+    'file' => 'convio_signup.admin.inc',
+  );
+  $items['admin/structure/convio-signup/add'] = array(
+    'title' => 'Convio Signup Forms',
+    'description' => 'Create/Edit Convio Signup Forms',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('convio_signup_add'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer convio signup forms'),
+    'file' => 'convio_signup.admin.inc',
+  );
+  $items['admin/structure/convio-signup/%/delete'] = array(
+    'title' => 'Convio Signup Forms',
+    'description' => 'Create/Edit Convio Signup Forms',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('convio_signup_delete', 3),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer convio signup forms'),
+    'file' => 'convio_signup.admin.inc',
+  );
+  
+  return $items;
+}
+
+
+/**
+ * Implements hook_theme().
+ */
+function convio_signup_theme($existing, $type, $theme, $path) {
+  $theme = array(
+    'convio_signup_admin' => array(
+      'variables' => array('table' => ''),
+      'template'  => 'convio-signup-admin',
+    ),
+  );
+  return $theme;
+}
+
+/**
+ * Implements hook_block_info()
+ */
+function convio_signup_block_info() {
+  $blocks = array();
+  
+  $result = db_query('SELECT cid, title, description from {convio_signup}');
+  foreach ($result as $item) {
+    $blocks[$item->cid] = array(
+      'title' => t($item->title),
+      'info' => t($item->description),
+      'cache' => DRUPAL_CACHE_GLOBAL
+    );
+  }
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view()
+ */
+function convio_signup_block_view($delta = '') {
+  $result = db_query('SELECT * from {convio_signup} WHERE cid = :delta', array(':delta' => $delta))->fetchObject();
+  if ($result) {
+    return array(
+      'content' => drupal_get_form('convio_signup_block_form', $result)
+    );
+  }
+}
+
+/**
+ * Implements hook_block_configure()
+ */
+function convio_signup_block_configure($delta = '') {
+  $result = db_query('SELECT * from {convio_signup} WHERE cid = :delta', array(':delta' => $delta))->fetchObject();
+  
+  if ($result) {
+    $form['convio_signup'] = array(
+      '#type' => 'fieldset'
+    );
+    $form['convio_signup']['description'] = array(
+      '#type' => 'textfield',
+      '#title' => t('A brief description of this form.'),
+      '#size' => 120,
+      '#maxlength' => 1024,
+      '#default_value' => $result->description,
+      '#required' => TRUE
+    );
+    $form['convio_signup']['before'] = array(
+      '#type' => 'text_format',
+      '#title' => 'Form Prefix',
+      '#default_value' => $result->before_markup,
+      '#format' => $result->before_format,
+      '#description' => t('Markup to be displayed above the form.')
+    );
+    $form['convio_signup']['display_fields'] = array(
+      '#type' => 'checkboxes',
+      '#options' => convio_signup_get_fields(),
+      '#default_value' => unserialize($result->fields_displayed),
+      '#title' => t('Additional form fields to be displayed. (Email will always be displayed and required)')
+    );
+    $form['convio_signup']['required_fields'] = array(
+      '#type' => 'checkboxes',
+      '#options' => convio_signup_get_fields(),
+      '#default_value' => unserialize($result->fields_required),
+      '#title' => t('Additional form fields to be marked as required.')
+    );
+    $form['convio_signup']['interest_ids'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Interest Ids'),
+      '#description' => t('List of comma separated (Interest ID, Friendly Name) pairs that will be listed as subscription options on this form. Adding ",1" to the end of the row will make that option selected by default. Multiple interest ID\'s should be listed on a separate line. Example: 13532, Programming Newsletter, 1'),
+      '#default_value' => $result->interest_ids,
+      '#element_validate' => array('_convio_signup_id_validate'),
+      '#size' => 60,
+      '#maxlength' => 60
+    );
+    $form['convio_signup']['group_ids'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Group Ids'),
+      '#description' => t('A comma separated list of Group IDs to be added to an account when when the form is submitted. <strong>These will be added to every record that submits the form!</strong>'),
+      '#default_value' => $result->group_ids,
+      '#element_validate' => array('_convio_signup_id_validate'),
+      '#size' => 60,
+      '#maxlength' => 60
+    );
+    $form['convio_signup']['submit_text'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Submit Button Text'),
+      '#description' => t('Label to be applied to the submit button for this form. Example: "Submit" or "Sign up"'),
+      '#default_value' => $result->submit,
+      '#size' => 9,
+      '#maxlength' => 16
+    );
+    return $form;
+  }
+}
+
+function convio_signup_block_save($delta = '', $edit = array()) {
+  $data = array(
+    'cid' => $delta,
+    'title' => ($edit['title']) ? ($edit['title']) : NULL,
+    'description' => ($edit['description']) ? ($edit['description']) : NULL,
+    'interest_ids' => ($edit['interest_ids']) ? $edit['interest_ids'] : NULL,
+    'group_ids' => ($edit['group_ids']) ? $edit['group_ids'] : NULL,
+    'fields_displayed' => ($edit['display_fields']) ? $edit['display_fields'] : NULL,
+    'fields_required' => ($edit['required_fields']) ? $edit['required_fields'] : NULL,
+    'before_markup' => ($edit['before']['value']) ? $edit['before']['value'] : NULL,
+    'before_format' => ($edit['before']['format']) ? $edit['before']['format'] : NULL,
+    'submit' => ($edit['submit_text']) ? $edit['submit_text'] : NULL, 
+  );
+  
+  $result = drupal_write_record('convio_signup', $data, 'cid');
+}
+
+function convio_signup_block_form($form, &$form_state, $options) {
+  $display = unserialize($options->fields_displayed);
+  $required = unserialize($options->fields_required);
+  $form['#attributes']['id'] = 'convio-signup-block-form-' . $options->cid;
+  $form['#attributes']['class'][] = 'convio-signup-form';
+  $form['#extra_data']['groups'] = $options->group_ids;
+  
+  if (!empty($options->before_markup)) {
+    $form['#prefix'] = check_markup($options->before_markup, $options->before_format);
+  }
+  
+  if ($display['firstname']) {
+    $form['firstname'] = array(
+      '#type' => 'textfield',
+      '#title' => t('First Name'),
+      '#title_display' => 'invisible',
+      '#attributes' => array('placeholder'=> 'First Name'),
+      '#required' => ($required['firstname']),
+    );
+  }
+  
+  if ($display['lastname']) {
+    $form['lastname'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Last Name'),
+      '#title_display' => 'invisible',
+      '#attributes' => array('placeholder'=> 'Last Name'),
+      '#required' => ($required['lastname']),
+    );
+  }
+  
+  //Email Address is always displayed and required
+  $form['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('E-mail Address'),
+    '#title_display' => 'invisible',
+    '#attributes' => array('placeholder'=> 'E-mail Address'),
+    '#required' => TRUE,
+  );
+  
+  if ($display['phone']) {
+    $form['phone'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Phone #'),
+      '#title_display' => 'invisible',
+      '#attributes' => array('placeholder'=> 'Phone #'),
+      '#required' => ($required['phone']),
+    );
+  }
+  
+  if ($display['address']) {
+    $form['address'] = array(
+      '#type' => 'fieldset',
+    );
+    
+    $form['address']['address1'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Street Address'),
+    '#required' => ($required['address']),
+    '#size' => 45,
+    '#attributes' => array('autocomplete' => 'off')
+    );
+    
+    $form['address']['address2'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Street Address Line 2'),
+    '#size' => 45,
+    '#attributes' => array('autocomplete' => 'off')
+    );
+    
+    $form['address']['city'] = array(
+    '#type' => 'textfield',
+    '#title' => t('City'),
+    '#required' => ($required['address']),
+    '#size' => 45,
+    '#attributes' => array('autocomplete' => 'off')
+    );
+    
+    $form['address']['state'] = array(
+    '#type' => 'select',
+    '#title' => t('State'),
+    '#required' => ($required['address']),
+    '#options' => convio_signup_get_states(),
+    '#default_value' => 'VA',
+    '#attributes' => array('autocomplete' => 'off')
+    );
+    
+    $form['address']['zip'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Zip'),
+    '#required' => ($required['address']),
+    '#size' => 10,
+    '#attributes' => array('autocomplete' => 'off')
+    );
+  }
+  
+  if (!empty($options->interest_ids)) {
+    $interest_options = array();
+    $interest_defaults = array();
+    $rows = explode("\n", $options->interest_ids);
+    foreach ($rows as $row) {
+      $items = explode(',', $row);
+      $interest_options[$items[0]] = $items[1];
+      if (!empty($items[2]) && trim($items[2]) == '1') {
+        $interest_defaults[] = $items[0];
+      }
+    }
+    $form['interests'] = array(
+      '#type' => 'checkboxes',
+      '#options' => $interest_options,
+      '#default_value' => $interest_defaults,
+    );
+  }
+   
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#name' => 'submit-' . $options->cid,
+    '#value' => ($options->submit) ? check_plain($options->submit) : 'Submit',
+  );
+  
+  return $form;
+}
+
+function convio_signup_block_form_validate($form, &$form_state) {
+ 
+}
+
+function convio_signup_block_form_submit($form, &$form_state) {
+  $values = $form_state['values'];
+
+  $params = array(
+    'method' => 'createOrUpdate',
+    'primary_email' => $values['email'],
+    'email.accepts_email' => 'true',
+    'email.preferred_format' => 'HTML',
+  );
+  
+  //Check for interest IDs
+  if (!empty($values['interests'])) {
+    $interest_ids = array();
+    foreach ($values['interests'] as $interest) {
+      if ($interest != 0) {
+        $interest_ids[] = $interest;
+      }
+    }
+    if (!empty($interest_ids)) {
+      $params['add_interest_ids'] = implode(',', $interest_ids);
+    }
+  }
+    
+  if (!empty($form['#extra_data']['group_ids']))
+    $params['add_group_ids'] = $form['#extra_data']['group_ids'];
+  
+  if (!empty($values['firstname']))
+    $params['name.first'] = $values['firstname'];
+  if (!empty($values['lastname']))
+    $params['name.last'] = $values['lastname'];
+  
+  if (!empty($values['phone']))
+    $params['home_phone'] = $values['phone'];
+    
+  if (!empty($values['address'])) {
+    if (!empty($values['address']['city']))
+      $params['primary_address.city'] = $values['address']['city'];
+    if (!empty($values['address']['state']))
+      $params['primary_address.state'] = $values['address']['state'];
+    if (!empty($values['address']['street1']))
+      $params['primary_address.street1'] = $values['address']['street1'];
+    if (!empty($values['address']['street2']))
+      $params['primary_address.street2'] = $values['address']['street2'];
+    if (!empty($values['address']['zip']))
+      $params['primary_address.zip'] = $values['address']['zip'];
+  }
+  
+  $response = convio_api_request($params, 'constituent', 'server');
+  
+  if ($response->code === '200') {
+    drupal_set_message('Thanks for signing up!');
+  }
+  else {
+    drupal_set_message('Sorry, there was an error signing up. Please try again later.', 'error');
+  }
+}
+
+function _convio_signup_id_validate($element, &$form_state, $form) {
+  switch ($element['#name']) {
+    case 'interest_ids':
+    if (!empty($element['#value'])) {
+      $lines = explode("\n", $element['#value']);
+      foreach ($lines as $line) {
+        $item = explode(',', $line);
+        if (!ctype_digit(trim($item[0]))) {
+          form_set_error($element['#name'], 'Interest IDs must be numeric.');
+        }
+        if (empty($item[1]) || trim($item[1]) == '') {
+          form_set_error($element['#name'], 'Friendly name must be set for each Interest ID');
+        }
+      }
+    }   
+    break;
+    case 'group_ids':
+    if (!empty($element['#value'])) {
+      $ids = explode(',', $element['#value']);
+      foreach ($ids as $id) {
+        if (!ctype_digit(trim($id))) {
+          form_set_error($element['#name'], 'Must be a comma separated list of numbers.');
+        }
+      }
+    }
+    break;
+  }
+}
+
+function convio_signup_get_fields() {
+  return drupal_map_assoc(
+    array(
+      'firstname',
+      'lastname',
+      'phone',
+      'address'
+    )
+  );
+}
+
+function convio_signup_get_states() {
+  return array('AL'=>"Alabama",  
+			'AK'=>"Alaska",  
+			'AZ'=>"Arizona",  
+			'AR'=>"Arkansas",  
+			'CA'=>"California",  
+			'CO'=>"Colorado",  
+			'CT'=>"Connecticut",  
+			'DE'=>"Delaware",  
+			'DC'=>"District Of Columbia",  
+			'FL'=>"Florida",  
+			'GA'=>"Georgia",  
+			'HI'=>"Hawaii",  
+			'ID'=>"Idaho",  
+			'IL'=>"Illinois",  
+			'IN'=>"Indiana",  
+			'IA'=>"Iowa",  
+			'KS'=>"Kansas",  
+			'KY'=>"Kentucky",  
+			'LA'=>"Louisiana",  
+			'ME'=>"Maine",  
+			'MD'=>"Maryland",  
+			'MA'=>"Massachusetts",  
+			'MI'=>"Michigan",  
+			'MN'=>"Minnesota",  
+			'MS'=>"Mississippi",  
+			'MO'=>"Missouri",  
+			'MT'=>"Montana",
+			'NE'=>"Nebraska",
+			'NV'=>"Nevada",
+			'NH'=>"New Hampshire",
+			'NJ'=>"New Jersey",
+			'NM'=>"New Mexico",
+			'NY'=>"New York",
+			'NC'=>"North Carolina",
+			'ND'=>"North Dakota",
+			'OH'=>"Ohio",  
+			'OK'=>"Oklahoma",  
+			'OR'=>"Oregon",  
+			'PA'=>"Pennsylvania",  
+			'RI'=>"Rhode Island",  
+			'SC'=>"South Carolina",  
+			'SD'=>"South Dakota",
+			'TN'=>"Tennessee",  
+			'TX'=>"Texas",  
+			'UT'=>"Utah",  
+			'VT'=>"Vermont",  
+			'VA'=>"Virginia",  
+			'WA'=>"Washington",  
+			'WV'=>"West Virginia",  
+			'WI'=>"Wisconsin",  
+			'WY'=>"Wyoming");
+}

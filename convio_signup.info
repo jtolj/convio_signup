@@ -1,0 +1,4 @@
+name = Convio Signup
+description = Create signup forms that create/update records in Convio
+core = 7.x
+dependencies[] = convio_api
